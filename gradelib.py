@@ -2,6 +2,7 @@ import sys, os, re, time, socket, select, subprocess, errno, shutil
 from subprocess import check_call, Popen
 from optparse import OptionParser
 
+
 __all__ = []
 
 ##################################################################
@@ -257,12 +258,24 @@ QEMU appears to already be running.  Please exit it if possible or use
 
         if options.verbose:
             show_command(("make",) + make_args)
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", 22500))
+        s.listen(1)
+
         cmd = ("make", "-s", "--no-print-directory") + make_args
         self.proc = Popen(cmd, stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT,
                           stdin=subprocess.PIPE)
         self.output = ""
         self.on_output = []
+
+        conn, addr = s.accept()
+        self.conn = conn
+
+    def quit(self):
+        self.conn.send("quit\n")
 
     @staticmethod
     def get_gdb_port():
@@ -385,7 +398,7 @@ class Runner():
 
         # Start QEMU
         pre_make()
-        self.qemu = QEMU(target_base + "-nox-gdb", *make_args)
+        self.qemu = QEMU(target_base + "-grade", *make_args)
         self.gdb = None
 
         try:
@@ -415,7 +428,8 @@ class Runner():
             try:
                 if self.gdb is None:
                     sys.exit(1)
-                self.gdb.kill()
+                # self.gdb.kill()
+                self.qemu.quit()
                 self.__react(self.reactors, 5)
                 self.gdb.close()
                 self.qemu.wait()
